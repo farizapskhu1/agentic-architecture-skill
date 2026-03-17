@@ -33,7 +33,7 @@ Source: [Writing Tools for Agents](https://www.anthropic.com/engineering/writing
 Write tool descriptions as you would **onboard a new hire** — make implicit context explicit. Small refinements to descriptions yield dramatic improvements (Claude 3.5 Sonnet achieved SOTA on SWE-bench after tool description refinements alone).
 
 **Do:**
-- Define specialized terminology in the description (e.g. `"დაბჟენა = filling = therapy"`)
+- Define specialized terminology in the description (e.g. `"PO = purchase order = buy order"`)
 - Describe parameter enum values with synonyms and examples
 - Use `input_examples` for complex parameters (72% → 90% accuracy in Anthropic tests)
 - Return actionable errors: explain what went wrong + expected format + correct example
@@ -70,8 +70,8 @@ JSON Schema defines structure but cannot express **usage patterns**. `input_exam
 {
   "name": "lookup_pricing",
   "input_examples": [
-    {"service": "therapy", "note": "user asked 'კბილის დაბჟენა რა ღირს?'"},
-    {"service": "implant", "note": "user asked 'იმპლანტი რა ღირს?'"}
+    {"service": "oil_change", "note": "user asked 'how much for an oil change?'"},
+    {"service": "tire_rotation", "note": "user asked 'tire rotation price?'"}
   ]
 }
 ```
