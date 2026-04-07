@@ -1,26 +1,17 @@
 ---
 name: agentic-architecture
-description: Anthropic best practices for agentic AI architecture (2025-2026). Use when designing, reviewing, or debugging agentic systems — tool definitions, context engineering, guardrails, orchestration patterns, long-running agents. Triggers on questions about agent design, tool use optimization, context management, or "how should we architect this".
+description: Anthropic best practices for agentic AI architecture. Use when designing or reviewing agentic systems — tool definitions, context engineering, orchestration patterns, evals, long-running agents.
 ---
 
 # Agentic Architecture — Anthropic Best Practices (2025-2026)
 
-Distilled from 8 Anthropic engineering publications (2024-2026). For full details, read the reference files.
+Distilled from 14 Anthropic engineering publications (2024-2026). For full details, read the reference files.
 
 ## Core Philosophy
 
 > "Find the simplest solution possible, and only increase complexity when needed."
 
 Agentic systems trade **latency and cost for better task performance**. Before building an agent, ask: can a single LLM call with retrieval + in-context examples solve this? Only add agentic patterns when simpler approaches fail.
-
-### Where 2026 updates 2024-2025 (newer wins)
-
-| Topic | 2024-2025 said | 2026 says | What to do |
-|-------|---------------|-----------|------------|
-| **Tool loading** | `defer_loading` + Tool Search Tool (85% token reduction) | Code Execution with MCP — tools as filesystem APIs (98.7% reduction) | For large tool sets (100+), prefer Code Execution with MCP. Tool Search still fine for 10-50 tools. |
-| **Single vs Multi-agent** | Default to single agent; multi-agent only when needed | Multi-agent coordination becoming standard; parallel reasoning across context windows | For complex workflows, **plan for multi-agent from the start**. Single-agent still fine for focused tasks. |
-| **Context management** | Compaction, structured notes, sub-agents to manage context | Data stays in execution sandbox, never enters model context at all | Prefer **keeping data out of context entirely** (code execution) over managing it once it's in (compaction). |
-| **Evals** | Eval-driven tool optimization; held-out test sets | Swiss Cheese model; agent-type-specific strategies; pass@k + pass^k; start from 20-50 real failures | Use the **2026 eval framework** — it's much more comprehensive. |
 
 ---
 
@@ -62,7 +53,7 @@ GOOD: "Invalid date format '11/06/2024'. Expected YYYY-MM-DD. Example: '2024-11-
 
 Errors are a **steering mechanism** — they teach the agent correct usage mid-conversation.
 
-### input_examples (API beta feature)
+### input_examples
 
 JSON Schema defines structure but cannot express **usage patterns**. `input_examples` fill this gap:
 
@@ -87,6 +78,7 @@ Best practices for examples:
 - Implement pagination, filtering, truncation with sensible defaults
 - Offer `response_format` enum: `"concise"` (72 tokens) vs `"detailed"` (206 tokens)
 - When truncating, tell the agent how to narrow the search
+- **Avoid context window pollution**: tool output should be a few high-signal lines, not thousands of raw bytes. Log verbose data to files; let the agent `grep` when needed. Errors: put `ERROR <reason>` on one line so the agent can find it. Pre-compute aggregate statistics instead of returning raw data for the agent to summarize. *(Source: [Building a C compiler](https://www.anthropic.com/engineering/building-c-compiler))*
 
 ---
 
@@ -99,6 +91,10 @@ Source: [Effective Context Engineering](https://www.anthropic.com/engineering/ef
 ### Context rot
 
 As tokens increase, recall accuracy **decreases** (n-squared pairwise relationships strain attention). Context is a finite resource with diminishing returns. Every token competes for attention.
+
+### Time blindness
+
+LLMs cannot perceive elapsed time. Without guardrails, an agent will happily spend hours on a sub-task instead of making progress. Mitigations: set timeouts on tool calls, return progress summaries at intervals, offer a `--fast` mode that samples a subset. *(Source: [Building a C compiler](https://www.anthropic.com/engineering/building-c-compiler))*
 
 ### System prompts — the Goldilocks zone
 
@@ -117,17 +113,24 @@ Hybrid approach: retrieve **some** data upfront for speed (config, facts) + enab
 
 ### Long-running state management
 
+**Best practice: prefer keeping data out of context entirely** (via code execution in a sandbox) over managing it once it's already in. When that's not possible:
+
 1. **Compaction**: summarize conversations nearing limits; preserve decisions, discard tool outputs
-2. **Structured notes**: agents write persistent notes (NOTES.md, to-do lists) outside context
-3. **Sub-agents**: focused sub-agents with clean windows return condensed summaries (10K explored → 1-2K returned)
+2. **Context resets**: clear the window entirely + structured handoff artifact carrying state and next steps. Gives the agent a clean slate — eliminates "context anxiety" (premature wrap-up near perceived limits) that compaction alone doesn't fix. Trade-off: adds orchestration complexity and requires the handoff artifact to carry enough state for clean pickup. *(Source: [Harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps))*
+3. **Structured notes**: agents write persistent notes (NOTES.md, to-do lists) outside context
+4. **Sub-agents**: focused sub-agents with clean windows return condensed summaries (10K explored → 1-2K returned)
 
 ---
 
-## 3. Advanced Tool Use Features (API beta)
+## 3. Advanced Tool Use
 
 Source: [Advanced Tool Use](https://www.anthropic.com/engineering/advanced-tool-use)
 
 Enable via `betas=["advanced-tool-use-2025-11-20"]`.
+
+**Token reduction strategy by scale:**
+- **10-50 tools** → Tool Search Tool (`defer_loading`) — 85% token reduction
+- **100+ tools / many MCP servers** → Code Execution with MCP (section 8) — 98.7% reduction
 
 ### Tool Search Tool — fix context bloat from definitions
 
@@ -140,7 +143,7 @@ Solution: `defer_loading: true` — Claude discovers tools on-demand.
 | Opus 4 accuracy | 49% | 74% |
 | Opus 4.5 accuracy | 79.5% | 88.1% |
 
-**When to use:** >10K tokens in tool defs, 10+ tools, multiple MCP servers.
+**When to use:** >10K tokens in tool defs, 10-50 tools, multiple MCP servers.
 Keep 3-5 most-used tools always loaded; defer the rest.
 
 ### Programmatic Tool Calling — fix intermediate result bloat
@@ -181,12 +184,35 @@ Five workflow patterns (composable, not prescriptive):
 - **Workflows**: predefined code paths, predictable, consistent
 - **Agents**: LLM dynamically directs its own process, flexible, higher cost
 
+**Default to workflows. Add agents only when the task genuinely requires dynamic decision-making.**
+
+For complex multi-step workflows, plan for **multi-agent coordination from the start** — orchestrator delegates to specialized agents working in parallel across separate context windows. Single-agent is still appropriate for focused, bounded tasks.
+
+### Multi-agent coordination tactics
+
+*(Source: [Building a C compiler](https://www.anthropic.com/engineering/building-c-compiler))*
+
+- **Task locking**: agents claim tasks via shared state (file, DB row, queue message). If two agents race for the same task, only one wins — the other picks something else.
+- **Role specialization**: dedicate agents to distinct concerns (core logic, code quality, documentation, performance). Specialization is a form of parallelization.
+- **Parallelism breaks down on monolithic tasks.** When all agents hit the same bottleneck, extra agents don't help. Break monolithic tasks into independently testable sub-tasks before parallelizing.
+
 ### Guardrails
 
 - Run guardrails **in parallel** with the main task (sectioning pattern) — a separate model instance screens while the main one works
 - Sandbox execution environments
 - Set maximum iterations / stopping conditions
 - Add human feedback checkpoints for high-stakes actions
+
+### Guardrail design patterns
+
+*(Source: [Claude Code auto mode](https://www.anthropic.com/engineering/claude-code-auto-mode), [Measuring Agent Autonomy](https://www.anthropic.com/research/measuring-agent-autonomy))*
+
+- **Two-stage guardrails**: fast cheap filter first (single-token yes/no, tuned to over-block), expensive chain-of-thought only on flagged items. Most actions clear stage 1. In Claude Code: 8.5% FPR → 0.4% after stage 2.
+- **Reasoning-blind classifiers**: guardrail should judge *what the agent did*, not *what the agent said about it*. Strip assistant text and tool outputs — prevents rationalizing past the check. Side benefit: prompt-injection payloads never reach the classifier.
+- **Deny-and-continue**: return denial as tool result with instructions to find a safer path — don't halt. Cap retries (3 consecutive or 20 total → escalate to human).
+- **Threat taxonomy**: (1) overeager behavior; (2) honest mistakes; (3) prompt injection; (4) misalignment. All caught by action-level blocking.
+- **Monitor-and-intervene > approve-every-action.** Experienced users auto-approve 40%+ but interrupt *more* often. Design for visibility and intervention, not mandatory approval.
+- **Agent-initiated clarification**: agents should proactively pause on complex tasks rather than plowing ahead.
 
 ---
 
@@ -201,6 +227,23 @@ For tasks spanning hours/days across multiple context windows:
 3. **Progress file** (e.g. `claude-progress.txt`): persists state across context resets alongside git history
 
 Key insight: each new session starts with **no memory** — the harness must enable fast state recovery.
+
+### Progress files must include failed approaches
+
+*(Source: [Long-running Claude for scientific computing](https://www.anthropic.com/research/long-running-Claude))*
+
+Progress file must record **what was tried and why it failed**. Without this, successive sessions re-attempt dead ends. Include: current status, completed tasks, failed approaches with reasons, quality checkpoints, known limitations.
+
+### Agentic laziness and the Ralph loop
+
+Agents declare "done" prematurely. Counter: loop that on completion re-prompts "are you sure? check again."
+
+### Evaluator-Generator separation
+
+*(Source: [Harness design for long-running apps](https://www.anthropic.com/engineering/harness-design-long-running-apps))*
+
+- **Every harness component encodes an assumption about what the model can't do on its own.** Re-examine with each new model — strip what's no longer load-bearing, add new pieces for harder tasks.
+- Separate evaluator agent is far more tractable to tune for skepticism than self-critical generator. Worth the cost at the edge of the model's capability; overhead for easy tasks.
 
 ---
 
@@ -256,6 +299,18 @@ Source: [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering
 - **pass@k vs pass^k**: at k=1 identical, at k=10 opposite stories. Use both.
 - **Partial credit**: for multi-component tasks, grade each component separately
 - **0% pass rate across many trials** = most likely broken task, not incapable agent
+
+### Infrastructure noise in agentic evals
+
+*(Source: [Infrastructure noise in agentic evals](https://www.anthropic.com/engineering/infrastructure-noise))*
+
+Resource config (RAM, CPU, enforcement) can swing benchmarks by **6 pp**. Treat as first-class experimental variable. Leaderboard gaps <3 pp deserve skepticism until infra documented. A few-point lead might be a real gap — or just a bigger VM.
+
+### Post-deployment monitoring is essential
+
+*(Source: [Measuring Agent Autonomy](https://www.anthropic.com/research/measuring-agent-autonomy))*
+
+Pre-deployment evals test controlled settings. Many failure modes only surface in real usage — invest in post-deployment monitoring alongside pre-deployment evals.
 
 ### Claude Code's eval journey
 
@@ -360,3 +415,9 @@ All content distilled from official Anthropic engineering publications:
 6. [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) — Jan 2026
 7. [Code Execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) — 2026
 8. [2026 Agentic Coding Trends Report](https://resources.anthropic.com/2026-agentic-coding-trends-report) — Jan 2026
+9. [Harness Design for Long-Running Apps](https://www.anthropic.com/engineering/harness-design-long-running-apps) — Mar 2026
+10. [Building a C Compiler with Parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler) — Feb 2026
+11. [Claude Code Auto Mode](https://www.anthropic.com/engineering/claude-code-auto-mode) — Mar 2026
+12. [Measuring Agent Autonomy in Practice](https://www.anthropic.com/research/measuring-agent-autonomy) — Feb 2026
+13. [Long-running Claude for Scientific Computing](https://www.anthropic.com/research/long-running-Claude) — Mar 2026
+14. [Infrastructure Noise in Agentic Evals](https://www.anthropic.com/engineering/infrastructure-noise) — Feb 2026

@@ -1,6 +1,10 @@
 # Agentic Architecture — Claude Code Skill
 
-A Claude Code skill with Anthropic best practices for agentic AI architecture (2025-2026). Distilled from 8 official Anthropic engineering publications.
+A Claude Code skill with Anthropic best practices for agentic AI architecture. Distilled from 14 official Anthropic engineering publications (2024-2026).
+
+## What is a Claude Code skill?
+
+A skill is a Markdown file that Claude Code loads on-demand when you invoke it with a slash command. It injects a focused knowledge base directly into Claude's context — no external API calls, no plugins. This skill teaches Claude current Anthropic best practices so you get consistent, up-to-date guidance on agentic system design without re-explaining the fundamentals each session.
 
 ## What's inside
 
@@ -24,18 +28,20 @@ A Claude Code skill with Anthropic best practices for agentic AI architecture (2
 
 ## Installation
 
-Copy the `.claude/skills/agentic-architecture/` folder into your project:
+**Global (available in all projects):**
 
 ```bash
-# From your project root
-mkdir -p .claude/skills
-cp -r path/to/this-repo/.claude/skills/agentic-architecture .claude/skills/
+git clone https://github.com/farizapskhu1/agentic-architecture-skill /tmp/agentic-architecture-skill
+mkdir -p ~/.claude/skills
+cp -r /tmp/agentic-architecture-skill/.claude/skills/agentic-architecture ~/.claude/skills/
 ```
 
-Or for global availability (all projects):
+**Project-only:**
 
 ```bash
-cp -r path/to/this-repo/.claude/skills/agentic-architecture ~/.claude/skills/
+git clone https://github.com/farizapskhu1/agentic-architecture-skill /tmp/agentic-architecture-skill
+mkdir -p .claude/skills
+cp -r /tmp/agentic-architecture-skill/.claude/skills/agentic-architecture .claude/skills/
 ```
 
 ## Usage
@@ -46,7 +52,7 @@ In Claude Code, invoke with:
 /agentic-architecture
 ```
 
-The skill triggers automatically when you ask about agent design, tool use optimization, context management, orchestration patterns, or "how should we architect this".
+Claude will also pick it up automatically when you ask about agent design, tool optimization, context management, orchestration patterns, or how to architect an agentic system.
 
 ## Sources
 
@@ -60,3 +66,9 @@ All content distilled from official Anthropic engineering publications:
 6. [Demystifying Evals for AI Agents](https://www.anthropic.com/engineering/demystifying-evals-for-ai-agents) — Jan 2026
 7. [Code Execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp) — 2026
 8. [2026 Agentic Coding Trends Report](https://resources.anthropic.com/2026-agentic-coding-trends-report) — Jan 2026
+9. [Harness Design for Long-Running Apps](https://www.anthropic.com/engineering/harness-design-long-running-apps) — Mar 2026
+10. [Building a C Compiler with Parallel Claudes](https://www.anthropic.com/engineering/building-c-compiler) — Feb 2026
+11. [Claude Code Auto Mode](https://www.anthropic.com/engineering/claude-code-auto-mode) — Mar 2026
+12. [Measuring Agent Autonomy in Practice](https://www.anthropic.com/research/measuring-agent-autonomy) — Feb 2026
+13. [Long-running Claude for Scientific Computing](https://www.anthropic.com/research/long-running-Claude) — Mar 2026
+14. [Infrastructure Noise in Agentic Evals](https://www.anthropic.com/engineering/infrastructure-noise) — Feb 2026
